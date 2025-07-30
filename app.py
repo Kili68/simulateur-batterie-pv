@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
-
+import csv
 from io import StringIO
 
 # === Simulation core ===
@@ -68,7 +68,13 @@ st.title("Simulation de Batterie Photovoltaïque")
 fichier_data = st.file_uploader("Fichier CSV (avec horodatage, consommation et production)", type="csv", key="data")
 
 if fichier_data:
-    df = pd.read_csv(fichier_data, sep=';')
+    # Lecture du fichier en tant que texte
+    contenu = fichier_data.read().decode("utf-8")
+    separateur = csv.Sniffer().sniff(contenu[:1024]).delimiter
+    st.info(f"Séparateur détecté : '{separateur}'")
+    fichier_data.seek(0)
+
+    df = pd.read_csv(fichier_data, sep=separateur)
     st.success("Fichier chargé avec succès.")
 
     colonnes = df.columns.tolist()
