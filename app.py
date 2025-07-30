@@ -57,7 +57,10 @@ def simuler_batterie(prod, conso, capacite_kwh, p_charge_max_kw, p_decharge_max_
         'energie_stockee': energie_stockee,
         'energie_restituee': energie_restituee,
         'taux_autoconsommation_avec': autoconsommation_brute / production_totale,
-        'taux_autarcie_avec': autoconsommation_brute / consommation_totale
+        'taux_autarcie_avec': autoconsommation_brute / consommation_totale,
+        'autoconsommation_brute': autoconsommation_brute,
+        'production_totale': production_totale,
+        'consommation_totale': consommation_totale
     }
     return resultats
 
@@ -68,14 +71,14 @@ st.title("Simulation de Batterie Photovoltaïque")
 fichier_data = st.file_uploader("Fichier CSV (avec horodatage, consommation et production)", type="csv", key="data")
 
 if fichier_data:
-    # Lecture du fichier en tant que texte
     contenu = fichier_data.read().decode("utf-8")
     separateur = csv.Sniffer().sniff(contenu[:1024]).delimiter
     st.info(f"Séparateur détecté : '{separateur}'")
     fichier_data.seek(0)
 
     df = pd.read_csv(fichier_data, sep=separateur)
-    st.success("Fichier chargé avec succès.")
+    st.subheader("Aperçu des données")
+    st.dataframe(df.head(20))
 
     colonnes = df.columns.tolist()
     col_time = st.selectbox("Colonne date/heure", colonnes)
@@ -102,6 +105,15 @@ if fichier_data:
     df_conso = df[['conso']].rename(columns={'conso': 'valeur'})
     df_prod = df[['prod']].rename(columns={'prod': 'valeur'})
 
+    st.subheader("Analyse sans batterie")
+    autoconsommation_sans = np.minimum(df['conso'], df['prod']).sum()
+    taux_autoconsommation_sans = autoconsommation_sans / df['prod'].sum()
+    taux_autarcie_sans = autoconsommation_sans / df['conso'].sum()
+
+    col1, col2 = st.columns(2)
+    col1.metric("Taux d'autoconsommation (sans batterie)", f"{taux_autoconsommation_sans * 100:.1f} %")
+    col2.metric("Taux d'autarcie (sans batterie)", f"{taux_autarcie_sans * 100:.1f} %")
+
     st.sidebar.header("Paramètres Batterie")
     capacite = st.sidebar.slider("Capacité utile batterie (kWh)", 1.0, 20.0, 5.0, 0.5)
     p_charge = st.sidebar.slider("Puissance de charge (kW)", 0.5, 10.0, 2.0, 0.5)
@@ -110,16 +122,16 @@ if fichier_data:
     soc_min = st.sidebar.slider("SOC min (%)", 0, 100, 10)
     soc_max = st.sidebar.slider("SOC max (%)", 10, 100, 100)
 
-    bouton_simuler = st.button("Lancer la simulation")
+    bouton_simuler = st.button("Lancer la simulation avec batterie")
 
     if bouton_simuler:
         resultats = simuler_batterie(df_prod, df_conso, capacite, p_charge, p_decharge, rendement, soc_min, soc_max, 'Wh')
         soc_series = resultats['soc_series']
 
-        st.subheader("Taux")
+        st.subheader("Comparaison avec batterie")
         col1, col2 = st.columns(2)
-        col1.metric("Taux d'autoconsommation", f"{resultats['taux_autoconsommation_avec'] * 100:.1f} %")
-        col2.metric("Taux d'autarcie", f"{resultats['taux_autarcie_avec'] * 100:.1f} %")
+        col1.metric("Taux d'autoconsommation (avec batterie)", f"{resultats['taux_autoconsommation_avec'] * 100:.1f} %")
+        col2.metric("Taux d'autarcie (avec batterie)", f"{resultats['taux_autarcie_avec'] * 100:.1f} %")
 
         st.subheader("Graphique interactif")
         vue = st.radio("Vue :", ["Jour", "Semaine", "Mois"], horizontal=True)
