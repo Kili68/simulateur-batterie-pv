@@ -18,10 +18,14 @@ def simuler_batterie(prod, conso, capacite_kwh, p_charge_max_kw, p_decharge_max_
 
     energie_stockee = energie_restituee = energie_exportee = energie_importee = 0
     autoconsommation_brute = consommation_totale = production_totale = 0
+    puissances_prod = []
+    puissances_conso = []
 
     for t in prod.index:
         prod_t = prod.at[t, 'valeur']
         conso_t = conso.at[t, 'valeur']
+        puissances_prod.append(prod_t)
+        puissances_conso.append(conso_t)
 
         surplus = prod_t - conso_t
         consommation_totale += conso_t
@@ -60,7 +64,9 @@ def simuler_batterie(prod, conso, capacite_kwh, p_charge_max_kw, p_decharge_max_
         'taux_autarcie_avec': autoconsommation_brute / consommation_totale,
         'autoconsommation_brute': autoconsommation_brute,
         'production_totale': production_totale,
-        'consommation_totale': consommation_totale
+        'consommation_totale': consommation_totale,
+        'puissance_max_prod': max(puissances_prod) * 4 / 1000,
+        'puissance_max_conso': max(puissances_conso) * 4 / 1000
     }
     return resultats
 
@@ -110,28 +116,41 @@ if fichier_data:
     taux_autoconsommation_sans = autoconsommation_sans / df['prod'].sum()
     taux_autarcie_sans = autoconsommation_sans / df['conso'].sum()
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     col1.metric("Taux d'autoconsommation (sans batterie)", f"{taux_autoconsommation_sans * 100:.1f} %")
     col2.metric("Taux d'autarcie (sans batterie)", f"{taux_autarcie_sans * 100:.1f} %")
+    col3.metric("Puissance max consommée (kW)", f"{(df['conso'].max() * 4 / 1000):.2f}")
 
-    st.sidebar.header("Paramètres Batterie")
-    capacite = st.sidebar.slider("Capacité utile batterie (kWh)", 1.0, 20.0, 5.0, 0.5)
-    p_charge = st.sidebar.slider("Puissance de charge (kW)", 0.5, 10.0, 2.0, 0.5)
-    p_decharge = st.sidebar.slider("Puissance de décharge (kW)", 0.5, 10.0, 2.0, 0.5)
-    rendement = st.sidebar.slider("Rendement (%)", 70, 100, 90)
-    soc_min = st.sidebar.slider("SOC min (%)", 0, 100, 10)
-    soc_max = st.sidebar.slider("SOC max (%)", 10, 100, 100)
+    st.markdown(f"**Energie totale consommée :** {df['conso'].sum() / 1000:.1f} kWh")
+    st.markdown(f"**Energie totale produite :** {df['prod'].sum() / 1000:.1f} kWh")
+    st.markdown(f"**Puissance max produite :** {df['prod'].max() * 4 / 1000:.2f} kW")
 
-    bouton_simuler = st.button("Lancer la simulation avec batterie")
+    with st.sidebar:
+        st.header("Paramètres Batterie")
+        capacite = st.slider("Capacité utile batterie (kWh)", 1.0, 20.0, 5.0, 0.5)
+        p_charge = st.slider("Puissance de charge (kW)", 0.5, 10.0, 2.0, 0.5)
+        p_decharge = st.slider("Puissance de décharge (kW)", 0.5, 10.0, 2.0, 0.5)
+        rendement = st.slider("Rendement (%)", 70, 100, 90)
+        soc_min = st.slider("SOC min (%)", 0, 100, 10)
+        soc_max = st.slider("SOC max (%)", 10, 100, 100)
+        bouton_simuler = st.button("Lancer la simulation avec batterie")
 
     if bouton_simuler:
-        resultats = simuler_batterie(df_prod, df_conso, capacite, p_charge, p_decharge, rendement, soc_min, soc_max, 'Wh')
+        with st.spinner("Simulation en cours..."):
+            resultats = simuler_batterie(df_prod, df_conso, capacite, p_charge, p_decharge, rendement, soc_min, soc_max, 'Wh')
+
         soc_series = resultats['soc_series']
 
         st.subheader("Comparaison avec batterie")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         col1.metric("Taux d'autoconsommation (avec batterie)", f"{resultats['taux_autoconsommation_avec'] * 100:.1f} %")
         col2.metric("Taux d'autarcie (avec batterie)", f"{resultats['taux_autarcie_avec'] * 100:.1f} %")
+        col3.metric("Puissance max consommée (kW)", f"{resultats['puissance_max_conso']:.2f}")
+
+        st.markdown(f"**Energie importée :** {resultats['energie_importee'] / 1000:.1f} kWh")
+        st.markdown(f"**Energie exportée :** {resultats['energie_exportee'] / 1000:.1f} kWh")
+        st.markdown(f"**Energie stockée :** {resultats['energie_stockee'] / 1000:.1f} kWh")
+        st.markdown(f"**Energie restituée :** {resultats['energie_restituee'] / 1000:.1f} kWh")
 
         st.subheader("Graphique interactif")
         vue = st.radio("Vue :", ["Jour", "Semaine", "Mois"], horizontal=True)
