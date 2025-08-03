@@ -53,27 +53,29 @@ def simuler_batterie(prod, conso, capacite_kwh, p_charge_max_kw, p_decharge_max_
 
         soc_series.at[t] = (soc / capacite_kwh) * 100
 
-    autoconsommation_sans = np.minimum(prod['valeur'], conso['valeur']).sum()
     energie_importee_sans = (conso['valeur'] - prod['valeur']).clip(lower=0).sum()
     energie_exportee_sans = (prod['valeur'] - conso['valeur']).clip(lower=0).sum()
+    autoconsommation_sans = np.minimum(prod['valeur'], conso['valeur']).sum()
+    taux_autoconsommation_sans = autoconsommation_sans / production_totale
+    taux_autarcie_sans = autoconsommation_sans / consommation_totale
 
     resultats = {
         'soc_series': soc_series,
         'energie_importee': energie_importee,
         'energie_exportee': energie_exportee,
+        'energie_importee_sans': energie_importee_sans,
+        'energie_exportee_sans': energie_exportee_sans,
         'energie_stockee': energie_stockee,
         'energie_restituee': energie_restituee,
         'taux_autoconsommation_avec': autoconsommation_brute / production_totale,
         'taux_autarcie_avec': autoconsommation_brute / consommation_totale,
-        'taux_autoconsommation_sans': autoconsommation_sans / production_totale,
-        'taux_autarcie_sans': autoconsommation_sans / consommation_totale,
-        'energie_importee_sans': energie_importee_sans,
-        'energie_exportee_sans': energie_exportee_sans,
+        'taux_autoconsommation_sans': taux_autoconsommation_sans,
+        'taux_autarcie_sans': taux_autarcie_sans,
         'autoconsommation_brute': autoconsommation_brute,
         'production_totale': production_totale,
         'consommation_totale': consommation_totale,
         'puissance_max_prod': max(puissances_prod) * 4 / 1000,
-        'puissance_max_conso': max(puissances_conso) * 4 / 1000
+        'puissance_max_conso': max(puissances_conso) * 4 / 1000,
     }
     return resultats
 
@@ -97,7 +99,6 @@ if fichier_data:
     col_time = st.selectbox("Colonne date/heure", colonnes)
     col_conso = st.selectbox("Colonne consommation", colonnes)
     col_prod = st.selectbox("Colonne production", colonnes)
-
     unite = st.selectbox("Unité des données", ['Wh', 'kWh', 'W', 'kW'])
 
     df[col_time] = pd.to_datetime(df[col_time], errors='coerce')
@@ -119,18 +120,22 @@ if fichier_data:
     df_prod = df[['prod']].rename(columns={'prod': 'valeur'})
 
     st.subheader("Analyse sans batterie")
+    energie_importee_sans = (df['conso'] - df['prod']).clip(lower=0).sum()
+    energie_exportee_sans = (df['prod'] - df['conso']).clip(lower=0).sum()
     autoconsommation_sans = np.minimum(df['conso'], df['prod']).sum()
     taux_autoconsommation_sans = autoconsommation_sans / df['prod'].sum()
     taux_autarcie_sans = autoconsommation_sans / df['conso'].sum()
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Taux d'autoconsommation (sans batterie)", f"{taux_autoconsommation_sans * 100:.1f} %")
-    col2.metric("Taux d'autarcie (sans batterie)", f"{taux_autarcie_sans * 100:.1f} %")
+    col1.metric("Taux d'autoconsommation", f"{taux_autoconsommation_sans * 100:.1f} %")
+    col2.metric("Taux d'autarcie", f"{taux_autarcie_sans * 100:.1f} %")
     col3.metric("Puissance max consommée (kW)", f"{(df['conso'].max() * 4 / 1000):.2f}")
 
     st.markdown(f"**Energie totale consommée :** {df['conso'].sum() / 1000:.1f} kWh")
     st.markdown(f"**Energie totale produite :** {df['prod'].sum() / 1000:.1f} kWh")
     st.markdown(f"**Puissance max produite :** {df['prod'].max() * 4 / 1000:.2f} kW")
+    st.markdown(f"**Energie importée :** {energie_importee_sans / 1000:.1f} kWh")
+    st.markdown(f"**Energie exportée :** {energie_exportee_sans / 1000:.1f} kWh")
 
     with st.sidebar:
         st.header("Paramètres Batterie")
@@ -144,48 +149,40 @@ if fichier_data:
 
     if bouton_simuler:
         with st.spinner("Simulation en cours..."):
-            resultats = simuler_batterie(df_prod, df_conso, capacite, p_charge, p_decharge, rendement, soc_min, soc_max, 'Wh')
-
-        soc_series = resultats['soc_series']
+            df_conso_copy = df_conso.copy()
+            df_prod_copy = df_prod.copy()
+            resultats = simuler_batterie(df_prod_copy, df_conso_copy, capacite, p_charge, p_decharge, rendement, soc_min, soc_max, 'Wh')
 
         st.subheader("Comparaison avec batterie")
         col1, col2, col3 = st.columns(3)
-        col1.metric("Taux d'autoconsommation (avec batterie)", f"{resultats['taux_autoconsommation_avec'] * 100:.1f} %")
-        col2.metric("Taux d'autarcie (avec batterie)", f"{resultats['taux_autarcie_avec'] * 100:.1f} %")
+        col1.metric("Taux d'autoconsommation", f"{resultats['taux_autoconsommation_avec'] * 100:.1f} %")
+        col2.metric("Taux d'autarcie", f"{resultats['taux_autarcie_avec'] * 100:.1f} %")
         col3.metric("Puissance max consommée (kW)", f"{resultats['puissance_max_conso']:.2f}")
 
+        st.markdown(f"**Energie totale consommée :** {resultats['consommation_totale'] / 1000:.1f} kWh")
+        st.markdown(f"**Energie totale produite :** {resultats['production_totale'] / 1000:.1f} kWh")
+        st.markdown(f"**Puissance max produite :** {resultats['puissance_max_prod']:.2f} kW")
         st.markdown(f"**Energie importée :** {resultats['energie_importee'] / 1000:.1f} kWh")
         st.markdown(f"**Energie exportée :** {resultats['energie_exportee'] / 1000:.1f} kWh")
         st.markdown(f"**Energie stockée :** {resultats['energie_stockee'] / 1000:.1f} kWh")
         st.markdown(f"**Energie restituée :** {resultats['energie_restituee'] / 1000:.1f} kWh")
-        st.markdown(f"**Energie importée (sans batterie) :** {resultats['energie_importee_sans'] / 1000:.1f} kWh")
-        st.markdown(f"**Energie exportée (sans batterie) :** {resultats['energie_exportee_sans'] / 1000:.1f} kWh")
 
-        st.subheader("Graphique interactif")
-        vue = st.radio("Vue :", ["Jour", "Semaine", "Mois"], horizontal=True)
-
-        df_plot = pd.DataFrame({
-            'Production (kWh)': df_prod['valeur'] / 1000,
-            'Consommation (kWh)': df_conso['valeur'] / 1000,
-            'SOC (%)': soc_series
+        st.subheader("Tableau comparatif")
+        tableau = pd.DataFrame({
+            "Indicateur": [
+                "Taux d'autoconsommation", "Taux d'autarcie", "Énergie importée (kWh)", "Énergie exportée (kWh)"
+            ],
+            "Sans batterie": [
+                f"{resultats['taux_autoconsommation_sans']*100:.1f} %",
+                f"{resultats['taux_autarcie_sans']*100:.1f} %",
+                f"{resultats['energie_importee_sans']/1000:.1f}",
+                f"{resultats['energie_exportee_sans']/1000:.1f}"
+            ],
+            "Avec batterie": [
+                f"{resultats['taux_autoconsommation_avec']*100:.1f} %",
+                f"{resultats['taux_autarcie_avec']*100:.1f} %",
+                f"{resultats['energie_importee']/1000:.1f}",
+                f"{resultats['energie_exportee']/1000:.1f}"
+            ]
         })
-
-        if vue == "Jour":
-            jours = df_plot.index.normalize().unique()
-            jour_select = st.slider("Choisissez le jour", 0, len(jours) - 1, 0)
-            selection = df_plot[df_plot.index.normalize() == jours[jour_select]]
-        elif vue == "Semaine":
-            semaines = df_plot.resample('W').mean().index
-            semaine_select = st.slider("Choisissez la semaine", 0, len(semaines) - 1, 0)
-            semaine_start = semaines[semaine_select] - pd.Timedelta(days=6)
-            selection = df_plot.loc[(df_plot.index >= semaine_start) & (df_plot.index <= semaines[semaine_select])]
-        else:
-            mois = df_plot.index.to_period("M").unique()
-            mois_select = st.slider("Choisissez le mois", 0, len(mois) - 1, 0)
-            selection = df_plot[df_plot.index.to_period("M") == mois[mois_select]]
-
-        st.line_chart(selection)
-
-        csv_result = selection.copy()
-        csv_result.index.name = "Horodatage"
-        st.download_button("Télécharger ce jeu de données", csv_result.to_csv().encode('utf-8'), "resultats_selection.csv", "text/csv")
+        st.dataframe(tableau, use_container_width=True)
