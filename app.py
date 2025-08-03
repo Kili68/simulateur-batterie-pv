@@ -32,12 +32,11 @@ def simuler_batterie(prod, conso, capacite_kwh, p_charge_max_kw, p_decharge_max_
         production_totale += prod_t
 
         if surplus >= 0:
-            charge_possible = min(surplus, p_charge_max_kw * pas_h)
-            espace_batterie = soc_max - soc
-            energie_chargee = min(charge_possible * rendement, espace_batterie)
+            energie_chargeable = min(surplus, p_charge_max_kw * pas_h, (soc_max - soc) / rendement)
+            energie_chargee = energie_chargeable * rendement
             soc += energie_chargee
             energie_stockee += energie_chargee
-            surplus_rest = surplus - energie_chargee / rendement
+            surplus_rest = surplus - energie_chargeable
             if surplus_rest > 0:
                 energie_exportee += surplus_rest
             autoconsommation_brute += conso_t
@@ -54,6 +53,10 @@ def simuler_batterie(prod, conso, capacite_kwh, p_charge_max_kw, p_decharge_max_
 
         soc_series.at[t] = (soc / capacite_kwh) * 100
 
+    autoconsommation_sans = np.minimum(prod['valeur'], conso['valeur']).sum()
+    energie_importee_sans = (conso['valeur'] - prod['valeur']).clip(lower=0).sum()
+    energie_exportee_sans = (prod['valeur'] - conso['valeur']).clip(lower=0).sum()
+
     resultats = {
         'soc_series': soc_series,
         'energie_importee': energie_importee,
@@ -62,6 +65,10 @@ def simuler_batterie(prod, conso, capacite_kwh, p_charge_max_kw, p_decharge_max_
         'energie_restituee': energie_restituee,
         'taux_autoconsommation_avec': autoconsommation_brute / production_totale,
         'taux_autarcie_avec': autoconsommation_brute / consommation_totale,
+        'taux_autoconsommation_sans': autoconsommation_sans / production_totale,
+        'taux_autarcie_sans': autoconsommation_sans / consommation_totale,
+        'energie_importee_sans': energie_importee_sans,
+        'energie_exportee_sans': energie_exportee_sans,
         'autoconsommation_brute': autoconsommation_brute,
         'production_totale': production_totale,
         'consommation_totale': consommation_totale,
@@ -151,6 +158,8 @@ if fichier_data:
         st.markdown(f"**Energie exportée :** {resultats['energie_exportee'] / 1000:.1f} kWh")
         st.markdown(f"**Energie stockée :** {resultats['energie_stockee'] / 1000:.1f} kWh")
         st.markdown(f"**Energie restituée :** {resultats['energie_restituee'] / 1000:.1f} kWh")
+        st.markdown(f"**Energie importée (sans batterie) :** {resultats['energie_importee_sans'] / 1000:.1f} kWh")
+        st.markdown(f"**Energie exportée (sans batterie) :** {resultats['energie_exportee_sans'] / 1000:.1f} kWh")
 
         st.subheader("Graphique interactif")
         vue = st.radio("Vue :", ["Jour", "Semaine", "Mois"], horizontal=True)
